@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedCenter Client</title>
+    <!-- Подключаем Bootstrap для красоты -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding-top: 20px; background-color: #f8f9fa; }
+        .card { margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .section-view { display: none; } /* Скрываем секции по умолчанию */
+        .active-view { display: block; } /* Показываем активную */
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="text-center mb-4">MedCenter CRM</h1>
+
+    <!-- Навигация -->
+    <ul class="nav nav-pills mb-4 justify-content-center">
+        <li class="nav-item">
+            <a class="nav-link active" href="#" onclick="showSection('doctors')">Врачи</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSection('patients')">Пациенты</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSection('appointments')">Записи на прием</a>
+        </li>
+    </ul>
+
+    <!-- СЕКЦИЯ ВРАЧЕЙ -->
+    <div id="doctors-view" class="section-view active-view">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card p-3">
+                    <h5>Добавить врача</h5>
+                    <form id="doctorForm">
+                        <input type="text" class="form-control mb-2" id="docUsername" placeholder="Логин" required>
+                        <input type="password" class="form-control mb-2" id="docPassword" placeholder="Пароль" required>
+                        <input type="text" class="form-control mb-2" id="docFirstName" placeholder="Имя" required>
+                        <input type="text" class="form-control mb-2" id="docLastName" placeholder="Фамилия" required>
+                        <!-- Для простоты ID специальности вводим вручную, в идеале - выпадающий список -->
+                        <input type="number" class="form-control mb-2" id="docSpecialtyId" placeholder="ID Специальности" required>
+                        <button type="submit" class="btn btn-primary w-100">Создать</button>
+                    </form>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card p-3">
+                    <h5>Список врачей</h5>
+                    <table class="table table-striped">
+                        <thead><tr><th>ID</th><th>Имя</th><th>Специальность</th><th>Действия</th></tr></thead>
+                        <tbody id="doctorsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- СЕКЦИЯ ПАЦИЕНТОВ -->
+    <div id="patients-view" class="section-view">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card p-3">
+                    <h5>Добавить пациента</h5>
+                    <form id="patientForm">
+                        <input type="text" class="form-control mb-2" id="patUsername" placeholder="Логин" required>
+                        <input type="password" class="form-control mb-2" id="patPassword" placeholder="Пароль" required>
+                        <input type="text" class="form-control mb-2" id="patFirstName" placeholder="Имя" required>
+                        <input type="text" class="form-control mb-2" id="patLastName" placeholder="Фамилия" required>
+                        <input type="date" class="form-control mb-2" id="patDob" required>
+                        <input type="text" class="form-control mb-2" id="patPhone" placeholder="Телефон" required>
+                        <button type="submit" class="btn btn-success w-100">Создать</button>
+                    </form>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card p-3">
+                    <h5>Список пациентов</h5>
+                    <table class="table table-striped">
+                        <thead><tr><th>ID</th><th>Имя</th><th>Телефон</th><th>Действия</th></tr></thead>
+                        <tbody id="patientsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- СЕКЦИЯ ЗАПИСЕЙ -->
+    <div id="appointments-view" class="section-view">
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <div class="card p-3 bg-light">
+                    <h4>Новая запись</h4>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <input type="text" id="appPatientId" class="form-control" placeholder="ID Пациента">
+                        </div>
+                        <div class="col-md-3">
+                            <!-- Выбор слота. В реальности нужно сначала выбрать врача, потом дату, потом слот.
+                                 Здесь для простоты вводим ID свободного слота -->
+                            <input type="text" id="appSlotId" class="form-control" placeholder="ID Свободного слота">
+                        </div>
+                        <div class="col-md-2">
+                            <button onclick="createAppointment()" class="btn btn-primary w-100">Записать</button>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted">
+                                * Сначала создайте слоты в админке Django или через API, затем введите ID свободного слота.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h5>Активные записи (Appointments)</h5>
+                    <button onclick="loadAppointments()" class="btn btn-sm btn-outline-secondary mb-2">Обновить</button>
+                    <ul class="list-group" id="appointmentsList"></ul>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h5>Свободные слоты (Пример)</h5>
+                    <button onclick="loadFreeSlots()" class="btn btn-sm btn-outline-secondary mb-2">Найти свободные</button>
+                    <ul class="list-group" id="slotsList"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const API_URL = 'http://127.0.0.1:8000/api'; // Убедись, что порт совпадает
+
+    // --- Утилиты ---
+
+    // Переключение вкладок
+    function showSection(sectionId) {
+        document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active-view'));
+        document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+
+        document.getElementById(sectionId + '-view').classList.add('active-view');
+        event.target.classList.add('active');
+
+        // Автозагрузка данных при переключении
+        if(sectionId === 'doctors') loadDoctors();
+        if(sectionId === 'patients') loadPatients();
+        if(sectionId === 'appointments') { loadAppointments(); loadFreeSlots(); }
+    }
+
+    // --- ВРАЧИ ---
+
+    async function loadDoctors() {
+        const res = await fetch(`${API_URL}/doctors/`);
+        const data = await res.json();
+        const tbody = document.getElementById('doctorsTableBody');
+        tbody.innerHTML = '';
+        data.forEach(doc => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${doc.id}</td>
+                    <td>${doc.user.first_name} ${doc.user.last_name}</td>
+                    <td>${doc.specialty_details ? doc.specialty_details.name : doc.specialty}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteEntity('doctors', ${doc.id})">Удалить</button></td>
+                </tr>
+            `;
+        });
+    }
+
+    document.getElementById('doctorForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        // Структура JSON должна соответствовать DoctorSerializer (вложенный user)
+        const payload = {
+            user: {
+                username: document.getElementById('docUsername').value,
+                password: document.getElementById('docPassword').value,
+                first_name: document.getElementById('docFirstName').value,
+                last_name: document.getElementById('docLastName').value,
+            },
+            specialty: document.getElementById('docSpecialtyId').value,
+            appointment_duration: 30
+        };
+
+        const res = await fetch(`${API_URL}/doctors/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            alert('Врач создан!');
+            document.getElementById('doctorForm').reset();
+            loadDoctors();
+        } else {
+            alert('Ошибка создания. Проверьте консоль и ID специальности.');
+            console.log(await res.json());
+        }
+    });
+
+    // --- ПАЦИЕНТЫ ---
+
+    async function loadPatients() {
+        const res = await fetch(`${API_URL}/patients/`);
+        const data = await res.json();
+        const tbody = document.getElementById('patientsTableBody');
+        tbody.innerHTML = '';
+        data.forEach(pat => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${pat.id}</td>
+                    <td>${pat.user.first_name} ${pat.user.last_name}</td>
+                    <td>${pat.phone_number}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteEntity('patients', ${pat.id})">Удалить</button></td>
+                </tr>
+            `;
+        });
+    }
+
+    document.getElementById('patientForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = {
+            user: {
+                username: document.getElementById('patUsername').value,
+                password: document.getElementById('patPassword').value,
+                first_name: document.getElementById('patFirstName').value,
+                last_name: document.getElementById('patLastName').value,
+            },
+            date_of_birth: document.getElementById('patDob').value,
+            phone_number: document.getElementById('patPhone').value
+        };
+
+        const res = await fetch(`${API_URL}/patients/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            alert('Пациент зарегистрирован!');
+            document.getElementById('patientForm').reset();
+            loadPatients();
+        } else {
+            alert('Ошибка. См. консоль.');
+            console.log(await res.json());
+        }
+    });
+
+    // --- ЗАПИСИ И СЛОТЫ ---
+
+    async function loadFreeSlots() {
+        // Фильтруем только свободные слоты
+        const res = await fetch(`${API_URL}/slots/?status=free`);
+        const data = await res.json();
+        const list = document.getElementById('slotsList');
+        list.innerHTML = '';
+        if(data.length === 0) list.innerHTML = '<li class="list-group-item">Нет свободных слотов</li>';
+
+        data.forEach(slot => {
+            list.innerHTML += `
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>ID: ${slot.id}</strong> | ${slot.date} ${slot.start_time}
+                        <br><small>${slot.doctor_name || 'Врач ID ' + slot.doctor}</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary"
+                        onclick="document.getElementById('appSlotId').value = ${slot.id}">Выбрать</button>
+                </li>
+            `;
+        });
+    }
+
+    async function loadAppointments() {
+        const res = await fetch(`${API_URL}/appointments/`);
+        const data = await res.json();
+        const list = document.getElementById('appointmentsList');
+        list.innerHTML = '';
+
+        data.forEach(app => {
+            const patName = app.patient_details?.user?.first_name || 'Пациент ' + app.patient;
+            const slotInfo = app.slot_details ? `${app.slot_details.date} ${app.slot_details.start_time}` : `Слот ${app.slot}`;
+
+            list.innerHTML += `
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${patName}</strong> на ${slotInfo}
+                        <br><span class="badge bg-info">${app.status}</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="deleteEntity('appointments', ${app.id})">Отмена</button>
+                </li>
+            `;
+        });
+    }
+
+    async function createAppointment() {
+        const patientId = document.getElementById('appPatientId').value;
+        const slotId = document.getElementById('appSlotId').value;
+
+        if(!patientId || !slotId) {
+            alert('Введите ID пациента и ID слота');
+            return;
+        }
+
+        const res = await fetch(`${API_URL}/appointments/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                patient: patientId,
+                slot: slotId,
+                status: 'scheduled'
+            })
+        });
+
+        if (res.ok) {
+            alert('Запись создана!');
+            loadAppointments();
+            loadFreeSlots(); // Обновить список слотов (выбранный должен исчезнуть)
+        } else {
+            alert('Ошибка записи. Возможно слот уже занят.');
+            console.log(await res.json());
+        }
+    }
+
+    // --- ОБЩЕЕ УДАЛЕНИЕ ---
+    async function deleteEntity(endpoint, id) {
+        if(!confirm('Вы уверены?')) return;
+
+        const res = await fetch(`${API_URL}/${endpoint}/${id}/`, {
+            method: 'DELETE'
+        });
+
+        if(res.ok) {
+            // Перезагружаем текущий вид
+            if(endpoint === 'doctors') loadDoctors();
+            if(endpoint === 'patients') loadPatients();
+            if(endpoint === 'appointments') { loadAppointments(); loadFreeSlots(); }
+        } else {
+            alert('Ошибка удаления');
+        }
+    }
+
+    // Инициализация: загружаем врачей при старте
+    loadDoctors();
+
+</script>
+
+</body>
+</html>

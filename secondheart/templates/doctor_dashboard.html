@@ -1,0 +1,412 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Шапка с приветствием и статистикой -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0">Кабинет врача</h2>
+            <p class="text-muted">Управление расписанием и пациентами</p>
+        </div>
+        <div class="text-end">
+            <span class="badge bg-primary fs-6" id="statTotal">Всего слотов: 0</span>
+            <span class="badge bg-warning text-dark fs-6" id="statBooked">Записей: 0</span>
+        </div>
+    </div>
+
+    <!-- Навигация (Вкладки) -->
+    <ul class="nav nav-tabs mb-4" id="doctorTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule" type="button" role="tab">
+                <i class="bi bi-calendar-check"></i> Текущее расписание
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+                <i class="bi bi-gear"></i> Настройки графика
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="doctorTabContent">
+
+        <!-- ВКЛАДКА 1: РАСПИСАНИЕ -->
+        <div class="tab-pane fade show active" id="schedule" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-3">
+                        <h5 class="mb-0">Записи и Слоты</h5>
+                        <!-- Фильтр по дате -->
+                        <input type="date" id="dateFilter" class="form-control form-control-sm" style="width: 150px;">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetDateFilter()">Все даты</button>
+                    </div>
+                    <button class="btn btn-sm btn-primary" onclick="loadMySlots()">
+                        <i class="bi bi-arrow-clockwise"></i> Обновить
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 15%">Дата</th>
+                                    <th style="width: 15%">Время</th>
+                                    <th style="width: 10%">Статус</th>
+                                    <th style="width: 40%">Пациент / Инфо</th>
+                                    <th style="width: 20%" class="text-end">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mySlotsTable">
+                                <!-- Сюда загружается JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="emptyState" class="text-center py-5 d-none">
+                        <p class="text-muted">На выбранную дату слотов нет.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА 2: НАСТРОЙКИ -->
+        <div class="tab-pane fade" id="settings" role="tabpanel">
+            <div class="row">
+                <!-- Левая часть: Шаблоны -->
+                <div class="col-md-7">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-info text-white">
+                            <i class="bi bi-clock"></i> Шаблоны рабочих дней
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted">
+                                Настройте дни недели, в которые вы принимаете. Это база для генерации расписания.
+                            </p>
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>День недели</th>
+                                        <th>Время работы</th>
+                                        <th>Тип</th>
+                                        <th class="text-center">Удалить</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="workingHoursTable">
+                                    <!-- JS Load -->
+                                </tbody>
+                            </table>
+
+                            <hr>
+                            <h6 class="text-primary">Добавить новый шаблон</h6>
+                            <form id="addWorkingHoursForm" class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label small">День</label>
+                                    <select id="whDay" class="form-select form-select-sm" required>
+                                        <option value="1">Понедельник</option>
+                                        <option value="2">Вторник</option>
+                                        <option value="3">Среда</option>
+                                        <option value="4">Четверг</option>
+                                        <option value="5">Пятница</option>
+                                        <option value="6">Суббота</option>
+                                        <option value="7">Воскресенье</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small">Начало</label>
+                                    <input type="time" id="whStart" class="form-control form-control-sm" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small">Конец</label>
+                                    <input type="time" id="whEnd" class="form-control form-control-sm" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-sm btn-success w-100">
+                                        <i class="bi bi-plus-circle"></i> Добавить
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Правая часть: Генератор -->
+                <div class="col-md-5">
+                    <div class="card shadow-sm border-primary">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-primary">Генерация расписания</h5>
+                            <p class="card-text text-muted small">
+                                Нажмите кнопку ниже, чтобы создать реальные слоты для записи на основе шаблонов слева.
+                                Слоты будут созданы на 2 недели вперед.
+                            </p>
+                            <div class="d-grid">
+                                <button id="btnGenerate" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-magic"></i> Сгенерировать слоты
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-3 small">
+                        <i class="bi bi-info-circle"></i>
+                        Генерация пропускает уже созданные слоты, так что можно нажимать кнопку безопасно, чтобы "догенерировать" дни.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Подключаем Bootstrap Icons (если еще не подключены в base.html) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+<script>
+    const weekDays = {
+        1: 'Понедельник', 2: 'Вторник', 3: 'Среда', 4: 'Четверг',
+        5: 'Пятница', 6: 'Суббота', 7: 'Воскресенье'
+    };
+
+    // Глобальная переменная для хранения слотов (для фильтрации)
+    let allSlots = [];
+
+    // --- Инициализация ---
+    document.addEventListener('DOMContentLoaded', () => {
+        loadWorkingHours();
+        loadMySlots();
+
+        // Установка текущей даты в фильтр (опционально)
+        // document.getElementById('dateFilter').valueAsDate = new Date();
+
+        document.getElementById('dateFilter').addEventListener('change', renderSlots);
+    });
+
+    // --- 1. Работа с расписанием (Слоты) ---
+
+    async function loadMySlots() {
+        try {
+            const res = await fetch('/api/slots/');
+            if (!res.ok) throw new Error('Ошибка загрузки');
+            allSlots = await res.json();
+
+            // Сортировка: Сначала дата, потом время
+            allSlots.sort((a, b) => (a.date + a.start_time).localeCompare(b.date + b.start_time));
+
+            updateStats();
+            renderSlots();
+        } catch (e) {
+            console.error(e);
+            alert('Не удалось загрузить расписание');
+        }
+    }
+
+    function updateStats() {
+        const total = allSlots.length;
+        const booked = allSlots.filter(s => s.status === 'booked').length;
+        document.getElementById('statTotal').textContent = `Всего слотов: ${total}`;
+        document.getElementById('statBooked').textContent = `Записей: ${booked}`;
+    }
+
+    function renderSlots() {
+        const tbody = document.getElementById('mySlotsTable');
+        const emptyState = document.getElementById('emptyState');
+        const filterDate = document.getElementById('dateFilter').value;
+
+        tbody.innerHTML = '';
+
+        // Фильтрация
+        let filteredSlots = allSlots;
+        if (filterDate) {
+            filteredSlots = allSlots.filter(s => s.date === filterDate);
+        }
+
+        if (filteredSlots.length === 0) {
+            emptyState.classList.remove('d-none');
+        } else {
+            emptyState.classList.add('d-none');
+
+            filteredSlots.forEach(slot => {
+                const tr = document.createElement('tr');
+
+                // Оформление статуса и действий
+                let statusBadge = '';
+                let patientInfo = '<span class="text-muted small">Нет записи</span>';
+                let actions = '';
+                let rowClass = '';
+
+                if (slot.status === 'free') {
+                    statusBadge = '<span class="badge bg-success bg-opacity-75">Свободно</span>';
+                    // Кнопка удаления только для свободных слотов
+                    actions = `
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSlot(${slot.id})" title="Удалить слот">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    `;
+                } else if (slot.status === 'booked') {
+                    rowClass = 'table-warning'; // Подсветка строки
+                    statusBadge = '<span class="badge bg-warning text-dark">Занято</span>';
+
+                    if (slot.patient_info) {
+                        patientInfo = `
+                            <strong>${slot.patient_info.full_name}</strong><br>
+                            <small class="text-muted"><i class="bi bi-telephone"></i> ${slot.patient_info.phone_number}</small>
+                        `;
+                        // Кнопка отмены записи (нужен appointment_id из сериализатора)
+                        if (slot.appointment_id) {
+                            actions = `
+                                <button class="btn btn-sm btn-danger" onclick="cancelAppointment(${slot.appointment_id})" title="Отменить запись">
+                                    <i class="bi bi-x-circle"></i> Отмена
+                                </button>
+                            `;
+                        }
+                    } else {
+                        patientInfo = '<span class="text-danger">Ошибка данных пациента</span>';
+                    }
+                }
+
+                tr.className = rowClass;
+                tr.innerHTML = `
+                    <td><strong>${formatDate(slot.date)}</strong></td>
+                    <td>${slot.start_time.slice(0,5)} - ${slot.end_time.slice(0,5)}</td>
+                    <td>${statusBadge}</td>
+                    <td>${patientInfo}</td>
+                    <td class="text-end">${actions}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    function resetDateFilter() {
+        document.getElementById('dateFilter').value = '';
+        renderSlots();
+    }
+
+    function formatDate(dateStr) {
+        // Преобразуем YYYY-MM-DD в DD.MM.YYYY
+        const [y, m, d] = dateStr.split('-');
+        return `${d}.${m}.${y}`;
+    }
+
+    // --- Действия со слотами ---
+
+    async function deleteSlot(slotId) {
+        if(!confirm('Вы уверены, что хотите удалить этот слот?')) return;
+
+        const res = await fetch(`/api/slots/${slotId}/`, {
+            method: 'DELETE',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+
+        if (res.ok) {
+            loadMySlots(); // Перезагружаем таблицу
+        } else {
+            alert('Ошибка при удалении слота');
+        }
+    }
+
+    async function cancelAppointment(apptId) {
+        if(!confirm('Отменить запись пациента? Слот снова станет свободным.')) return;
+
+        const res = await fetch(`/api/appointments/${apptId}/`, {
+            method: 'DELETE',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+
+        if (res.ok) {
+            loadMySlots();
+        } else {
+            alert('Ошибка при отмене записи');
+        }
+    }
+
+    // --- 2. Настройки графика (Working Hours) ---
+
+    function loadWorkingHours() {
+        fetch('/api/working_hours/')
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.getElementById('workingHoursTable');
+                tbody.innerHTML = '';
+                data.sort((a, b) => a.day_of_week - b.day_of_week);
+
+                data.forEach(wh => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${weekDays[wh.day_of_week]}</td>
+                        <td>${wh.start_time.slice(0,5)} - ${wh.end_time.slice(0,5)}</td>
+                        <td>${wh.before_lunch ? 'До обеда' : 'После обеда'}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-light text-danger" onclick="deleteWorkingHour(${wh.id})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+    }
+
+    document.getElementById('addWorkingHoursForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = {
+            day_of_week: document.getElementById('whDay').value,
+            start_time: document.getElementById('whStart').value,
+            end_time: document.getElementById('whEnd').value,
+            before_lunch: true // Упростили форму, можно добавить чекбокс обратно если нужно
+        };
+
+        const res = await fetch('/api/working_hours/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+            body: JSON.stringify(payload)
+        });
+
+        if(res.ok) {
+            loadWorkingHours();
+            document.getElementById('addWorkingHoursForm').reset();
+        } else {
+            alert('Ошибка. Возможно, такой день уже настроен.');
+        }
+    });
+
+    async function deleteWorkingHour(id) {
+        if(!confirm('Удалить этот шаблон?')) return;
+        await fetch(`/api/working_hours/${id}/`, {
+            method: 'DELETE',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+        loadWorkingHours();
+    }
+
+    // --- 3. Генерация слотов ---
+
+    document.getElementById('btnGenerate').addEventListener('click', async () => {
+        const btn = document.getElementById('btnGenerate');
+        const originalText = btn.innerHTML;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Генерируем...';
+
+        try {
+            const res = await fetch('/api/slots/generate_schedule/', {
+                method: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert(data.message);
+                loadMySlots(); // Обновляем таблицу слотов
+                // Переключаемся на вкладку расписания
+                document.querySelector('#schedule-tab').click();
+            } else {
+                alert('Ошибка: ' + (data.detail || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    });
+
+</script>
+{% endblock %}
