@@ -21,8 +21,8 @@ services:
     image: postgres:17
     environment:
       POSTGRES_DB: secondheart
-      POSTGRES_USER: app_user
-      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
