@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import logging
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -84,11 +85,11 @@ DATABASES = {
     # }
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        'NAME': 'secondheart',
-        'USER': 'postgres',
-        'PASSWORD': 'm3K9_zn5L5!',
-        'HOST': 'db',
-        'PORT': '5433'
+        "NAME": os.environ.get("POSTGRES_DB", "secondheart"),
+        "USER": os.environ.get("POSTGRES_USER", "postgres"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "postgres"),
+        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 

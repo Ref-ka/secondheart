@@ -4,31 +4,32 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-#    volumes:
-#      - .:/app
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: secondheart
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: secure_password_123
+      DJANGO_ALLOWED_HOSTS: "*"
+
   db:
     image: postgres:17
     environment:
       POSTGRES_DB: secondheart
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: m3K9_zn5L5!
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: secure_password_123
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U user -d mydatabase" ]
+      test: ["CMD-SHELL", "pg_isready -U app_user -d secondheart"]
       interval: 5s
       timeout: 5s
       retries: 5
+
 volumes:
   pg_data:
-
