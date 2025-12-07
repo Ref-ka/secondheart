@@ -24,6 +24,11 @@ services:
       POSTGRES_PASSWORD: m3K9_zn5L5!
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d mydatabase" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   volumes:
     pg_data:
 
