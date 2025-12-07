@@ -60,7 +60,7 @@ ROOT_URLCONF = "secondheart.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": ["app/secondheart/templates"],
+        "DIRS": ["/app/secondheart/templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
