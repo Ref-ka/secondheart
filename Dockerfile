@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-WORKDIR /secondheart/secondheart
+WORKDIR /app
 
 RUN apt-get update && apt-get install -y libpq-dev gcc
 
@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["python", "/app/secondheart/manage.py", "runserver", "0.0.0.0:8000"]
