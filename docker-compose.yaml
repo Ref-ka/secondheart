@@ -13,16 +13,16 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: secondheart
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: secure_password_123
       DJANGO_ALLOWED_HOSTS: "*"
 
   db:
     image: postgres:17
     environment:
       POSTGRES_DB: secondheart
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: secure_password_123
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
