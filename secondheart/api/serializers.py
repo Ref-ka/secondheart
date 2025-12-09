@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import (
     Patient, Doctor, Specialty, Appointment, WorkingHours, ScheduleSlot
 )
+from datetime import datetime, timedelta
 
 
 # --- Базовые сериализаторы ---
@@ -26,6 +27,55 @@ class WorkingHoursSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
         read_only_fields = ['doctor']
+
+    def validate(self, data):
+        """
+        Проверяем, что интервалы времени до и после обеда не пересекаются
+        """
+        user = self.context['request'].user
+        doctor = getattr(user, 'doctor_profile', None)
+
+        day_of_week = data.get('day_of_week')
+        before_lunch = data.get('before_lunch')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+
+        if not all([doctor, day_of_week, before_lunch, start_time, end_time]):
+            return data
+
+        # Проверяем базовую корректность времени
+        if start_time >= end_time:
+            raise serializers.ValidationError({
+                "error": "Время окончания должно быть позже времени начала"
+            })
+
+        today = datetime.now().date()
+        dt1 = datetime.combine(today, start_time)
+        dt2 = datetime.combine(today, end_time)
+
+        time_difference = dt2 - dt1
+        if (time_difference.seconds % 3600) // 60 < doctor.appointment_duration:
+            raise serializers.ValidationError({
+                "error": "Разница между окончанием и началом промежутка приема должна быть не меньше, "
+                         "чем длительность одного приема."
+            })
+
+        # Проверяем пересечение с другим интервалом в тот же день
+        # Ищем другой интервал у этого врача в тот же день (до или после обеда)
+        other_intervals = WorkingHours.objects.filter(
+            doctor=doctor,
+            day_of_week=day_of_week
+        ).exclude(id=self.instance.id if self.instance else None)
+
+        for interval in other_intervals:
+            # Проверяем пересечение временных интервалов
+            if start_time <= interval.end_time and end_time >= interval.start_time:
+                time_period = "до перерыва" if interval.before_lunch else "после перерыва"
+                raise serializers.ValidationError({
+                    "error": f"Это время пересекается с интервалом {interval.start_time}-{interval.end_time} ({time_period})"
+                })
+
+        return data
 
 
 # --- Врачи ---

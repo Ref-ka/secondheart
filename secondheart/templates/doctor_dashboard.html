@@ -43,6 +43,9 @@
                     <button class="btn btn-sm btn-primary" onclick="loadMySlots()">
                         <i class="bi bi-arrow-clockwise"></i> Обновить
                     </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteMySlots()">
+                        <i class="bi bi-arrow-clockwise"></i> Удалить все слоты
+                    </button>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -117,6 +120,12 @@
                                 <div class="col-md-3">
                                     <label class="form-label small">Конец</label>
                                     <input type="time" id="whEnd" class="form-control form-control-sm" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <input class="form-check-input" type="checkbox" id="whLunch" checked>
+                                    <label class="form-check-label">
+                                        До перерыва
+                                    </label>
                                 </div>
                                 <div class="col-md-3">
                                     <button type="submit" class="btn btn-sm btn-success w-100">
@@ -249,10 +258,32 @@
                             <small class="text-muted"><i class="bi bi-telephone"></i> ${slot.patient_info.phone_number}</small>
                         `;
                         // Кнопка отмены записи (нужен appointment_id из сериализатора)
-                        if (slot.appointment_id) {
+                        if (slot.appointment_id && slot.status != "completed") {
                             actions = `
+                                <button class="btn btn-sm btn-success" onclick="completeAppointment(${slot.appointment_id})" title="Отметить запись выполненной">
+                                    <i class="bi bi-check"></i> Отметить завершение
+                                </button>
                                 <button class="btn btn-sm btn-danger" onclick="cancelAppointment(${slot.appointment_id})" title="Отменить запись">
                                     <i class="bi bi-x-circle"></i> Отмена
+                                </button>
+                            `;
+                        }
+                    } else {
+                        patientInfo = '<span class="text-danger">Ошибка данных пациента</span>';
+                    }
+                } else if (slot.status === 'completed') {
+                    rowClass = 'table-success';
+                    statusBadge = '<span class="badge bg-success text-dark">Завершено</span>';
+
+                    if (slot.patient_info) {
+                        patientInfo = `
+                            <strong>${slot.patient_info.full_name}</strong><br>
+                            <small class="text-muted"><i class="bi bi-telephone"></i> ${slot.patient_info.phone_number}</small>
+                        `;
+                        if (slot.appointment_id && slot.status == "completed") {
+                            actions = `
+                                <button class="btn btn-sm btn-warning" onclick="revertAppointment(${slot.appointment_id})" title="Отметить незавершенным">
+                                    <i class="bi bi-x-circle"></i> Отметить незавершенным
                                 </button>
                             `;
                         }
@@ -299,6 +330,63 @@
             loadMySlots(); // Перезагружаем таблицу
         } else {
             alert('Ошибка при удалении слота');
+        }
+    }
+
+    async function deleteMySlots() {
+        if(!confirm('Вы уверены, что хотите удалить все пустые слоты?')) return;
+
+        const res = await fetch(`/api/doctorslots/bulk_delete/`, {
+            method: 'DELETE',
+            headers: {'X-CSRFToken': '{{ csrf_token}}'}
+        });
+
+        if (res.ok) {
+            loadMySlots();
+            alert('Слоты успешно удалены');
+        } else {
+            console.error('Ошибка:', res.status, res.statusText);
+            alert('Ошибка при удалении слотов');
+        }
+    }
+
+    async function completeAppointment(apptId) {
+        if(!confirm('Отметить запись завершенной?')) return;
+        
+        const payload = {
+            status: "completed"
+        };
+
+        const res = await fetch(`/api/appointments/${apptId}/`, {
+            method: 'PATCH',
+            headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            loadMySlots();
+        } else {
+            alert('Ошибка при завершении записи');
+        }
+    }
+
+    async function revertAppointment(apptId) {
+        if(!confirm('Отметить запись незавершенной?')) return;
+        
+        const payload = {
+            status: "scheduled"
+        };
+
+        const res = await fetch(`/api/appointments/${apptId}/`, {
+            method: 'PATCH',
+            headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            loadMySlots();
+        } else {
+            alert('Ошибка при восстановлении записи');
         }
     }
 
@@ -350,7 +438,7 @@
             day_of_week: document.getElementById('whDay').value,
             start_time: document.getElementById('whStart').value,
             end_time: document.getElementById('whEnd').value,
-            before_lunch: true // Упростили форму, можно добавить чекбокс обратно если нужно
+            before_lunch: (document.getElementById('whLunch').value == "on")
         };
 
         const res = await fetch('/api/working_hours/', {
@@ -363,7 +451,9 @@
             loadWorkingHours();
             document.getElementById('addWorkingHoursForm').reset();
         } else {
-            alert('Ошибка. Возможно, такой день уже настроен.');
+            //alert('Ошибка. Возможно, такой день уже настроен.');
+            let json = await res.json();
+            alert(json["error"]);
         }
     });
 
@@ -386,7 +476,7 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Генерируем...';
 
         try {
-            const res = await fetch('/api/slots/generate_schedule/', {
+            const res = await fetch('/api/doctorslots/generate_schedule/', {
                 method: 'POST',
                 headers: {'X-CSRFToken': '{{ csrf_token }}'}
             });

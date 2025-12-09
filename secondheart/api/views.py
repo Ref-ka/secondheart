@@ -12,8 +12,11 @@ from rest_framework import viewsets, status
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Doctor, Patient, Specialty, Appointment, ScheduleSlot, WorkingHours
 from . import serializers
+from django.db import transaction
 
 import logging
+
+from .serializers import WorkingHoursSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,7 @@ class WorkingHoursViewSet(viewsets.ModelViewSet):
         # Доктор видит только свои настройки графика
         return WorkingHours.objects.filter(doctor__user=self.request.user)
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: WorkingHoursSerializer):
         # При создании автоматически привязываем к текущему доктору
         doctor = self.request.user.doctor_profile
         serializer.save(doctor=doctor)
@@ -42,58 +45,95 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
         return ScheduleSlot.objects.filter(doctor__user=self.request.user)
 
     # Запрещаем ручное создание слотов через стандартный POST (опционально)
-    def create(self, request, *args, **kwargs):
-        return Response({"detail": "Use 'generate_schedule' action."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    # def create(self, request, *args, **kwargs):
+    #     return Response({"detail": "Use 'generate_schedule' action."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @action(detail=False, methods=['post'])
     def generate_schedule(self, request):
         """
-        Генерирует слоты на следующие N дней на основе WorkingHours
+        Генерирует слоты на 2 недели.
+        1. Удаляет будущие СВОБОДНЫЕ слоты (чтобы обновить график).
+        2. Оставляет ЗАНЯТЫЕ слоты (чтобы не отменить записи).
+        3. Создает новые слоты согласно WorkingHours, пропуская занятое время.
         """
         doctor = request.user.doctor_profile
-        days_ahead = 14  # Генерируем на 2 недели вперед
+        days_ahead = 14
         today = date.today()
+        end_date = today + timedelta(days=days_ahead)
 
-        created_count = 0
+        # Используем транзакцию, чтобы генерация была атомарной (всё или ничего)
+        with transaction.atomic():
+            # 1. Удаляем только СВОБОДНЫЕ слоты в этом диапазоне.
+            # Это позволяет врачу изменить график работы и перегенерировать слоты,
+            # не теряя при этом уже записанных пациентов.
+            ScheduleSlot.objects.filter(
+                doctor=doctor,
+                date__range=[today, end_date],
+                status='free'
+            ).delete()
 
-        for i in range(days_ahead):
-            current_date = today + timedelta(days=i)
-            # isoweekday: 1=Mon, 7=Sun
-            weekday = current_date.isoweekday()
+            created_count = 0
 
-            # Ищем настройки графика на этот день недели
-            working_hours = WorkingHours.objects.filter(doctor=doctor, day_of_week=weekday).first()
+            for i in range(days_ahead + 1):  # +1 чтобы захватить последний день
+                current_date = today + timedelta(days=i)
+                weekday = current_date.isoweekday()  # 1=Mon, 7=Sun
 
-            if not working_hours:
-                continue  # В этот день врач не работает
+                # Получаем ВСЕ интервалы работы на этот день (например, до обеда и после)
+                working_hours_list = WorkingHours.objects.filter(
+                    doctor=doctor,
+                    day_of_week=weekday
+                )
 
-            # Логика генерации слотов
-            start_dt = datetime.combine(current_date, working_hours.start_time)
-            end_dt = datetime.combine(current_date, working_hours.end_time)
+                if not working_hours_list.exists():
+                    continue
 
-            current_slot_start = start_dt
+                for wh in working_hours_list:
+                    start_dt = datetime.combine(current_date, wh.start_time)
+                    end_dt = datetime.combine(current_date, wh.end_time)
 
-            while current_slot_start + timedelta(minutes=doctor.appointment_duration) <= end_dt:
-                slot_end = current_slot_start + timedelta(minutes=doctor.appointment_duration)
+                    current_slot_start = start_dt
 
-                # Проверяем, не существует ли уже такой слот (чтобы не дублировать)
-                if not ScheduleSlot.objects.filter(
-                        doctor=doctor,
-                        date=current_date,
-                        start_time=current_slot_start.time()
-                ).exists():
-                    ScheduleSlot.objects.create(
-                        doctor=doctor,
-                        date=current_date,
-                        start_time=current_slot_start.time(),
-                        end_time=slot_end.time(),
-                        status='free'
-                    )
-                    created_count += 1
+                    while current_slot_start + timedelta(minutes=doctor.appointment_duration) <= end_dt:
+                        slot_end = current_slot_start + timedelta(minutes=doctor.appointment_duration)
 
-                current_slot_start = slot_end
+                        # Проверяем, нет ли уже слота на это время (например, статус 'booked' или 'completed')
+                        # Мы удалили только 'free', так что если слот остался - значит он занят.
+                        exists = ScheduleSlot.objects.filter(
+                            doctor=doctor,
+                            date=current_date,
+                            start_time=current_slot_start.time()
+                        ).exists()
 
-        return Response({"message": f"Сгенерировано {created_count} новых слотов."})
+                        if not exists:
+                            ScheduleSlot.objects.create(
+                                doctor=doctor,
+                                date=current_date,
+                                start_time=current_slot_start.time(),
+                                end_time=slot_end.time(),
+                                status='free'
+                            )
+                            created_count += 1
+
+                        current_slot_start = slot_end
+
+        return Response({
+            "message": "Расписание обновлено.",
+            "created_slots": created_count,
+            "period": f"{today} - {end_date}"
+        })
+
+    @action(detail=False, methods=['delete'])
+    def bulk_delete(self, request):
+        queryset = self.get_queryset()
+
+        free_slots = queryset.filter(status="free")
+
+        deleted_count, _ = free_slots.delete()
+
+        return Response(
+            {"message": f"Удалено {deleted_count} свободных слотов."},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
@@ -140,6 +180,20 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         slot.status = 'free'
         slot.save()
         instance.delete()
+
+    def perform_update(self, serializer):
+        appointment = serializer.save()  # Обновили Appointment
+        slot = appointment.slot
+
+        # Синхронизация статусов
+        if appointment.status == 'completed':
+            slot.status = 'completed'
+        elif appointment.status == "scheduled":
+            slot.status = 'booked'
+        else:
+            slot.status = 'free'
+
+        slot.save()
 
 
 # --- API для получения инфо о текущем пользователе ---

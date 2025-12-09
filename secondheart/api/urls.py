@@ -13,6 +13,7 @@ router.register(r'specialties', views.SpecialtyViewSet)
 router.register(r'slots', views.ScheduleSlotViewSet)
 router.register(r'appointments', views.AppointmentViewSet, basename="Appointments")
 router.register(r'working_hours', views.WorkingHoursViewSet)
+router.register(r'doctorslots', views.DoctorSlotViewSet, basename="DoctorSlots")
 
 urlpatterns = [
     path('', views.login_view, name="index"),  # Сделаем вход главной страницей
