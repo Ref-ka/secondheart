@@ -16,6 +16,11 @@
                 ➕ Записаться на прием
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab">
+                👤 Мои данные
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content p-4 border border-top-0 bg-light rounded-bottom" id="patientTabContent">
@@ -58,7 +63,9 @@
                             <!-- JS заполнит это -->
                         </select>
                     </div>
-
+                    <div id="specialtyDescription" class="alert alert-info d-none mb-3" role="alert">
+                        <small id="descriptionText"></small>
+                    </div>
                     <div class="list-group overflow-auto" style="max-height: 500px;" id="doctorsList">
                         <!-- JS заполнит это -->
                     </div>
@@ -69,6 +76,79 @@
                     <h5 class="mb-3">2. Выберите время</h5>
                     <div id="slotsContainer" class="p-3">
                         <div class="alert alert-info">Выберите врача слева, чтобы увидеть доступное время.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка 3: Профиль -->
+        <div class="tab-pane fade" id="profile" role="tabpanel">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <h5 class="card-title mb-4">Редактирование профиля</h5>
+                            <form id="profileForm">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Имя</label>
+                                        <input type="text" id="profFirstName" class="form-control" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Фамилия</label>
+                                        <input type="text" id="profLastName" class="form-control" required>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Дата рождения</label>
+                                    <input type="date" id="profDob" class="form-control" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Номер телефона</label>
+                                    <input type="tel" id="profPhone" class="form-control" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Экстренный контакт (имя, телефон)</label>
+                                    <input type="text" id="profEmergency" class="form-control">
+                                </div>
+
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-save"></i> Сохранить изменения
+                                    </button>
+                                </div>
+                            </form>
+
+                            <hr class="my-4">
+
+                            <h5 class="card-title mb-4">Смена пароля</h5>
+                            <form id="changePasswordForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Текущий пароль</label>
+                                    <input type="password" id="oldPassword" class="form-control" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Новый пароль</label>
+                                    <input type="password" id="newPassword" class="form-control" required minlength="8">
+                                    <div class="form-text">Минимум 8 символов</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Подтвердите новый пароль</label>
+                                    <input type="password" id="newPasswordConfirm" class="form-control" required minlength="8">
+                                </div>
+
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-warning">
+                                        <i class="bi bi-key"></i> Изменить пароль
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -93,8 +173,6 @@
     });
 
     // --- логика списка записей ---
-
-    // подгрузка записей
     function loadAppointments() {
         const tbody = document.getElementById('appointmentsTableBody');
         const loader = document.getElementById('appointmentsLoader');
@@ -109,7 +187,6 @@
             .then(appointments => {
                 loader.classList.add('d-none');
 
-                // фильтрация по id пациента
                 const myAppointments = appointments.filter(app => app.patient === currentPatientId);
 
                 if (myAppointments.length === 0) {
@@ -120,13 +197,11 @@
                 myAppointments.forEach(app => {
                     const row = document.createElement('tr');
 
-                    // статус записи
                     let statusBadge = '<span class="badge bg-secondary">Неизвестно</span>';
                     if (app.status === 'scheduled') statusBadge = '<span class="badge bg-primary">Запланировано</span>';
                     else if (app.status === 'completed') statusBadge = '<span class="badge bg-success">Завершено</span>';
                     else if (app.status === 'cancelled') statusBadge = '<span class="badge bg-danger">Отменено</span>';
 
-                    // удаление записи
                     let actionBtn = '';
                     if (app.status === 'scheduled') {
                         actionBtn = `<button class="btn btn-outline-danger btn-sm" onclick="cancelAppointment(${app.id})">Отменить</button>`;
@@ -147,7 +222,6 @@
             });
     }
 
-    // удалеие записи
     async function cancelAppointment(id) {
         if (!confirm('Вы уверены, что хотите отменить запись?')) return;
 
@@ -173,12 +247,24 @@
             .then(r => r.json())
             .then(specialties => {
                 const select = document.getElementById('specialtyFilter');
+                // Очищаем и добавляем дефолт
+                select.innerHTML = '<option value="all">Все специальности</option>';
+
                 specialties.forEach(spec => {
                     const opt = document.createElement('option');
                     opt.value = spec.id;
-                    opt.innerText = spec.name;
+                    opt.textContent = spec.name;
+                    // Сохраняем описание в data-description для удобного доступа
+                    opt.dataset.description = spec.description || '';
                     select.appendChild(opt);
                 });
+
+                // Если хочешь, можно сразу показать описание первой специальности (необязательно)
+                // select.selectedIndex = 0;
+                // filterDoctors();
+            })
+            .catch(err => {
+                console.error('Ошибка загрузки специальностей', err);
             });
     }
 
@@ -189,6 +275,9 @@
             .then(doctors => {
                 allDoctors = doctors;
                 renderDoctors(doctors);
+            })
+            .catch(err => {
+                console.error('Ошибка загрузки врачей', err);
             });
     }
 
@@ -216,6 +305,20 @@
                 // Подсветка активного
                 document.querySelectorAll('#doctorsList .list-group-item').forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
+
+                // Показываем описание специальности врача (если есть)
+                const descDiv = document.getElementById('specialtyDescription');
+                const descText = document.getElementById('descriptionText');
+                const s = doc.specialty_details && doc.specialty_details.description ? doc.specialty_details.description : '';
+                if (s && s.trim()) {
+                    descText.innerText = s;
+                    descDiv.classList.remove('d-none');
+                } else {
+                    // если описания нет — скрываем или показываем заглушку
+                    descText.innerText = '';
+                    descDiv.classList.add('d-none');
+                }
+
                 loadSlots(doc.id, doc.user.last_name);
             };
             list.appendChild(item);
@@ -224,13 +327,31 @@
 
     // фильтрация докторов по специальности
     function filterDoctors() {
-        const specId = document.getElementById('specialtyFilter').value;
+        const select = document.getElementById('specialtyFilter');
+        const specId = select.value;
+        const descDiv = document.getElementById('specialtyDescription');
+        const descText = document.getElementById('descriptionText');
+
         if (specId === 'all') {
             renderDoctors(allDoctors);
-        } else {
-            const filtered = allDoctors.filter(d => d.specialty_details.id == specId);
-            renderDoctors(filtered);
+            descText.innerText = '';
+            descDiv.classList.add('d-none');
+            return;
         }
+
+        const selectedOption = select.options[select.selectedIndex];
+        const description = selectedOption?.dataset?.description || '';
+
+        if (description.trim()) {
+            descText.innerText = description;
+            descDiv.classList.remove('d-none');
+        } else {
+            descText.innerText = 'Описание отсутствует.';
+            descDiv.classList.remove('d-none');
+        }
+
+        const filtered = allDoctors.filter(d => String(d.specialty_details.id) === String(specId));
+        renderDoctors(filtered);
     }
 
     function loadSlots(doctorId, doctorName) {
@@ -246,14 +367,12 @@
                     return;
                 }
 
-                // Группировка слотов по дате
                 const slotsByDate = {};
                 slots.forEach(slot => {
                     if (!slotsByDate[slot.date]) slotsByDate[slot.date] = [];
                     slotsByDate[slot.date].push(slot);
                 });
 
-                // Отрисовка по группам
                 for (const [date, daySlots] of Object.entries(slotsByDate)) {
                     const dateGroup = document.createElement('div');
                     dateGroup.className = 'mb-4';
@@ -262,13 +381,12 @@
                     const row = document.createElement('div');
                     row.className = 'd-flex flex-wrap gap-2';
 
-                    daySlots.sort((a, b) => a.start_time.localeCompare(b.start_time)); // Сортировка по времени
+                    daySlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
 
                     daySlots.forEach(slot => {
                         const btn = document.createElement('button');
                         btn.className = 'btn btn-outline-success btn-sm';
                         btn.style.minWidth = '80px';
-                        // Обрезаем секунды из времени (HH:MM:SS -> HH:MM)
                         const timeShort = slot.start_time.substring(0, 5);
                         btn.innerText = timeShort;
                         btn.onclick = () => bookSlot(slot.id, date, timeShort);
@@ -278,6 +396,10 @@
                     dateGroup.appendChild(row);
                     container.appendChild(dateGroup);
                 }
+            })
+            .catch(err => {
+                console.error('Ошибка загрузки слотов', err);
+                container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки слотов.</div>`;
             });
     }
 
@@ -298,26 +420,116 @@
 
         if (response.ok) {
             alert('Успешно! Вы записаны.');
-            // Переключаем на вкладку "Мои записи"
             const tabTrigger = new bootstrap.Tab(document.querySelector('#appointments-tab'));
             tabTrigger.show();
-            loadAppointments(); // Обновляем список записей
-
-            // Очищаем выбор слотов
+            loadAppointments();
             document.getElementById('slotsContainer').innerHTML = '<div class="alert alert-success">Запись создана. Выберите врача для новой записи.</div>';
             document.querySelectorAll('#doctorsList .list-group-item').forEach(el => el.classList.remove('active'));
         } else {
             alert('Ошибка записи. Возможно, слот уже занят.');
-            // Обновляем слоты текущего врача, чтобы убрать занятый
             const activeDoc = document.querySelector('.list-group-item.active');
             if (activeDoc) activeDoc.click();
         }
     }
 
-    // Форматирование даты
     function formatDate(dateString) {
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         return new Date(dateString).toLocaleDateString('ru-RU', options);
     }
+
+    document.getElementById('profile-tab').addEventListener('shown.bs.tab', () => {
+        loadProfileData();
+    });
+
+    function loadProfileData() {
+        if (!currentPatientId) return;
+
+        fetch(`/api/patients/${currentPatientId}/`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('profFirstName').value = data.user.first_name;
+                document.getElementById('profLastName').value = data.user.last_name;
+                document.getElementById('profDob').value = data.date_of_birth;
+                document.getElementById('profPhone').value = data.phone_number;
+                document.getElementById('profEmergency').value = data.emergency_contact;
+            })
+            .catch(err => alert('Ошибка загрузки профиля'));
+    }
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (!currentPatientId) return;
+
+        const payload = {
+            user: {
+                first_name: document.getElementById('profFirstName').value,
+                last_name: document.getElementById('profLastName').value,
+            },
+            date_of_birth: document.getElementById('profDob').value,
+            phone_number: document.getElementById('profPhone').value,
+            emergency_contact: document.getElementById('profEmergency').value
+        };
+
+        try {
+            const res = await fetch(`/api/patients/${currentPatientId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert('Профиль успешно обновлен!');
+            } else {
+                const err = await res.json();
+                alert('Ошибка при сохранении: ' + JSON.stringify(err));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+    });
+
+    // Обработка смены пароля
+    document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const oldPassword = document.getElementById('oldPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const newPasswordConfirm = document.getElementById('newPasswordConfirm').value;
+
+        if (newPassword !== newPasswordConfirm) {
+            alert('Новые пароли не совпадают');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/change-password/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword,
+                    new_password_confirm: newPasswordConfirm
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                alert('Пароль успешно изменен!');
+                document.getElementById('changePasswordForm').reset();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+    });
 </script>
 {% endblock %}

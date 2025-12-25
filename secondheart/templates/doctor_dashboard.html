@@ -26,6 +26,11 @@
                 <i class="bi bi-gear"></i> Настройки графика
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab">
+                <i class="bi bi-person-badge"></i> Мои данные
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content" id="doctorTabContent">
@@ -161,6 +166,83 @@
                 </div>
             </div>
         </div>
+
+        <div class="tab-pane fade" id="profile" role="tabpanel">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Редактирование профиля</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="profileForm">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Имя</label>
+                                        <input type="text" id="profFirstName" class="form-control" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Фамилия</label>
+                                        <input type="text" id="profLastName" class="form-control" required>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Специальность</label>
+                                    <select id="profSpecialty" class="form-select" required>
+                                        <!-- Загружается через JS -->
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Длительность приема (минут)</label>
+                                    <input type="number" id="profDuration" class="form-control" min="10" max="120" step="5" required>
+                                    <div class="form-text">Это значение влияет на генерацию новых слотов.</div>
+                                </div>
+
+                                <div class="form-check form-switch mb-4">
+                                    <input class="form-check-input" type="checkbox" id="profIsActive">
+                                    <label class="form-check-label" for="profIsActive">Профиль активен (виден пациентам)</label>
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-save"></i> Сохранить изменения
+                                    </button>
+                                </div>
+                            </form>
+
+                            <hr class="my-4">
+
+                            <h5 class="card-title mb-4"><i class="bi bi-key"></i> Смена пароля</h5>
+                            <form id="changePasswordForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Текущий пароль</label>
+                                    <input type="password" id="oldPassword" class="form-control" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Новый пароль</label>
+                                    <input type="password" id="newPassword" class="form-control" required minlength="8">
+                                    <div class="form-text">Минимум 8 символов</div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Подтвердите новый пароль</label>
+                                    <input type="password" id="newPasswordConfirm" class="form-control" required minlength="8">
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-warning">
+                                        <i class="bi bi-key"></i> Изменить пароль
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -191,7 +273,7 @@
 
     async function loadMySlots() {
         try {
-            const res = await fetch('/api/slots/');
+            const res = await fetch('/api/doctorslots/');
             if (!res.ok) throw new Error('Ошибка загрузки');
             allSlots = await res.json();
 
@@ -260,12 +342,18 @@
                         // Кнопка отмены записи (нужен appointment_id из сериализатора)
                         if (slot.appointment_id && slot.status != "completed") {
                             actions = `
+                                <div class="row mb-3">
+                                <div class="col-md-6">
                                 <button class="btn btn-sm btn-success" onclick="completeAppointment(${slot.appointment_id})" title="Отметить запись выполненной">
                                     <i class="bi bi-check"></i> Отметить завершение
                                 </button>
+                                </div>
+                                <div class="col-md-6">
                                 <button class="btn btn-sm btn-danger" onclick="cancelAppointment(${slot.appointment_id})" title="Отменить запись">
                                     <i class="bi bi-x-circle"></i> Отмена
                                 </button>
+                                </div>
+                                </div>
                             `;
                         }
                     } else {
@@ -321,7 +409,7 @@
     async function deleteSlot(slotId) {
         if(!confirm('Вы уверены, что хотите удалить этот слот?')) return;
 
-        const res = await fetch(`/api/slots/${slotId}/`, {
+        const res = await fetch(`/api/doctorslots/${slotId}/`, {
             method: 'DELETE',
             headers: {'X-CSRFToken': '{{ csrf_token }}'}
         });
@@ -438,7 +526,7 @@
             day_of_week: document.getElementById('whDay').value,
             start_time: document.getElementById('whStart').value,
             end_time: document.getElementById('whEnd').value,
-            before_lunch: (document.getElementById('whLunch').value == "on")
+            before_lunch: (document.getElementById('whLunch').checked == true)
         };
 
         const res = await fetch('/api/working_hours/', {
@@ -498,5 +586,135 @@
         }
     });
 
+    let currentDoctorId = null;
+
+    // Запускаем загрузку данных при открытии вкладки
+    document.getElementById('profile-tab').addEventListener('shown.bs.tab', () => {
+        loadProfileData();
+    });
+
+    async function loadProfileData() {
+        try {
+            // 1. Сначала узнаем ID текущего профиля доктора
+            const userRes = await fetch('/api/me/');
+            const userData = await userRes.json();
+            
+            if (userData.role !== 'doctor') {
+                alert('Ошибка: Вы не доктор');
+                return;
+            }
+            currentDoctorId = userData.profile_id;
+
+            // 2. Загружаем список специальностей для селекта
+            const specRes = await fetch('/api/specialties/');
+            const specialties = await specRes.json();
+            
+            const specSelect = document.getElementById('profSpecialty');
+            specSelect.innerHTML = '';
+            specialties.forEach(sp => {
+                const opt = document.createElement('option');
+                opt.value = sp.id;
+                opt.textContent = sp.name;
+                specSelect.appendChild(opt);
+            });
+
+            // 3. Загружаем данные самого доктора
+            const docRes = await fetch(`/api/doctors/${currentDoctorId}/`);
+            const docData = await docRes.json();
+
+            // Заполняем форму
+            document.getElementById('profFirstName').value = docData.user.first_name;
+            document.getElementById('profLastName').value = docData.user.last_name;
+            document.getElementById('profDuration').value = docData.appointment_duration;
+            document.getElementById('profIsActive').checked = docData.is_active;
+            
+            // Выбираем текущую специальность (берем ID из details)
+            if (docData.specialty_details) {
+                specSelect.value = docData.specialty_details.id;
+            }
+
+        } catch (e) {
+            console.error(e);
+            alert('Не удалось загрузить данные профиля');
+        }
+    }
+
+    // Обработка сохранения формы
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!currentDoctorId) return;
+
+        const payload = {
+            user: {
+                first_name: document.getElementById('profFirstName').value,
+                last_name: document.getElementById('profLastName').value,
+            },
+            specialty: document.getElementById('profSpecialty').value,
+            appointment_duration: parseInt(document.getElementById('profDuration').value),
+            is_active: document.getElementById('profIsActive').checked
+        };
+
+        try {
+            const res = await fetch(`/api/doctors/${currentDoctorId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json', 
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert('Данные успешно обновлены!');
+                // Можно обновить имя в шапке сайта, если оно там есть
+            } else {
+                const err = await res.json();
+                alert('Ошибка при сохранении: ' + JSON.stringify(err));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+    });
+
+    // Обработка смены пароля
+    document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const oldPassword = document.getElementById('oldPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const newPasswordConfirm = document.getElementById('newPasswordConfirm').value;
+
+        if (newPassword !== newPasswordConfirm) {
+            alert('Новые пароли не совпадают');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/change-password/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword,
+                    new_password_confirm: newPasswordConfirm
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                alert('Пароль успешно изменен!');
+                document.getElementById('changePasswordForm').reset();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+    });
 </script>
 {% endblock %}

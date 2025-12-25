@@ -27,11 +27,9 @@ class WorkingHoursViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Доктор видит только свои настройки графика
         return WorkingHours.objects.filter(doctor__user=self.request.user)
 
     def perform_create(self, serializer: WorkingHoursSerializer):
-        # При создании автоматически привязываем к текущему доктору
         doctor = self.request.user.doctor_profile
         serializer.save(doctor=doctor)
 
@@ -41,19 +39,14 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Доктор видит свои слоты
         return ScheduleSlot.objects.filter(doctor__user=self.request.user)
-
-    # Запрещаем ручное создание слотов через стандартный POST (опционально)
-    # def create(self, request, *args, **kwargs):
-    #     return Response({"detail": "Use 'generate_schedule' action."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @action(detail=False, methods=['post'])
     def generate_schedule(self, request):
         """
         Генерирует слоты на 2 недели.
-        1. Удаляет будущие СВОБОДНЫЕ слоты (чтобы обновить график).
-        2. Оставляет ЗАНЯТЫЕ слоты (чтобы не отменить записи).
+        1. Удаляет будущие свободные слоты (чтобы обновить график).
+        2. Оставляет занятые слоты (чтобы не отменить записи).
         3. Создает новые слоты согласно WorkingHours, пропуская занятое время.
         """
         doctor = request.user.doctor_profile
@@ -63,7 +56,7 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
 
         # Используем транзакцию, чтобы генерация была атомарной (всё или ничего)
         with transaction.atomic():
-            # 1. Удаляем только СВОБОДНЫЕ слоты в этом диапазоне.
+            #Удаляем только СВОБОДНЫЕ слоты в этом диапазоне.
             # Это позволяет врачу изменить график работы и перегенерировать слоты,
             # не теряя при этом уже записанных пациентов.
             ScheduleSlot.objects.filter(
@@ -74,11 +67,10 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
 
             created_count = 0
 
-            for i in range(days_ahead + 1):  # +1 чтобы захватить последний день
+            for i in range(days_ahead + 1):
                 current_date = today + timedelta(days=i)
-                weekday = current_date.isoweekday()  # 1=Mon, 7=Sun
+                weekday = current_date.isoweekday()
 
-                # Получаем ВСЕ интервалы работы на этот день (например, до обеда и после)
                 working_hours_list = WorkingHours.objects.filter(
                     doctor=doctor,
                     day_of_week=weekday
@@ -96,8 +88,7 @@ class DoctorSlotViewSet(viewsets.ModelViewSet):
                     while current_slot_start + timedelta(minutes=doctor.appointment_duration) <= end_dt:
                         slot_end = current_slot_start + timedelta(minutes=doctor.appointment_duration)
 
-                        # Проверяем, нет ли уже слота на это время (например, статус 'booked' или 'completed')
-                        # Мы удалили только 'free', так что если слот остался - значит он занят.
+                        # Проверяем, нет ли уже слота на это время
                         exists = ScheduleSlot.objects.filter(
                             doctor=doctor,
                             date=current_date,
@@ -155,9 +146,9 @@ class ScheduleSlotViewSet(viewsets.ModelViewSet):
     queryset = ScheduleSlot.objects.all()
     serializer_class = serializers.ScheduleSlotSerializer
     # Добавляем фильтрацию, чтобы клиент мог запросить только свободные слоты
-    # Пример запроса: /api/slots/?doctor=1&status=free&date=2023-10-27
+    # Пример запроса: /api/slots/?doctor=1&status=free
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['doctor', 'date', 'status']
+    filterset_fields = ['doctor', 'status']
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
@@ -166,14 +157,12 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Если это пациент - возвращаем только его записи
         if hasattr(user, 'patient_profile'):
             return Appointment.objects.filter(patient=user.patient_profile)
-        # Если это врач - возвращаем записи, где он является врачом
         elif hasattr(user, 'doctor_profile'):
             return Appointment.objects.filter(slot__doctor=user.doctor_profile)
-        # Иначе (админ) возвращаем всё
-        return Appointment.objects.all()
+        elif hasattr(user, 'is_staff'):
+            return Appointment.objects.all()
 
     def perform_destroy(self, instance):
         slot = instance.slot
@@ -182,7 +171,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         instance.delete()
 
     def perform_update(self, serializer):
-        appointment = serializer.save()  # Обновили Appointment
+        appointment = serializer.save()
         slot = appointment.slot
 
         # Синхронизация статусов
@@ -196,7 +185,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         slot.save()
 
 
-# --- API для получения инфо о текущем пользователе ---
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_user_info(request):
@@ -208,7 +196,6 @@ def current_user_info(request):
         'profile_id': None
     }
 
-    # Проверяем, кто это: врач или пациент
     if hasattr(user, 'patient_profile'):
         data['role'] = 'patient'
         data['profile_id'] = user.patient_profile.id
@@ -219,7 +206,43 @@ def current_user_info(request):
     return JsonResponse(data)
 
 
-# --- Представления для HTML страниц ---
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    new_password_confirm = request.data.get('new_password_confirm')
+
+    if not all([old_password, new_password, new_password_confirm]):
+        return JsonResponse(
+            {'error': 'Все поля обязательны для заполнения'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if new_password != new_password_confirm:
+        return JsonResponse(
+            {'error': 'Новые пароли не совпадают'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if len(new_password) < 8:
+        return JsonResponse(
+            {'error': 'Новый пароль должен содержать минимум 8 символов'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not user.check_password(old_password):
+        return JsonResponse(
+            {'error': 'Неверный текущий пароль'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    user.set_password(new_password)
+    user.save()
+
+    return JsonResponse({'message': 'Пароль успешно изменен'})
+
 
 def login_view(request):
     if request.method == "POST":
@@ -239,7 +262,6 @@ def logout_view(request):
 
 
 def register_view(request):
-    # Просто отдаем шаблон, логика регистрации будет через JS и API
     return render(request, 'register.html')
 
 
@@ -250,6 +272,7 @@ def dashboard_view(request):
         return render(request, 'patient_dashboard.html')
     elif hasattr(user, 'doctor_profile'):
         return render(request, 'doctor_dashboard.html')
+    elif user.is_staff:
+        return redirect('/admin/')
     else:
-        # Если пользователь есть, но профиля нет (например, админ)
         return render(request, 'index.html', {'message': 'У вас нет профиля врача или пациента'})

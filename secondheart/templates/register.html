@@ -6,6 +6,7 @@
         <div class="card">
             <div class="card-header">Регистрация</div>
             <div class="card-body">
+                <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
                 <div class="mb-3">
                     <label>Роль:</label>
                     <select id="roleSelect" class="form-select" onchange="toggleFields()">
@@ -47,14 +48,16 @@
 </div>
 
 <script>
-    // Загрузка специальностей для врача
+    // Загрузка специальностей (без изменений)
     fetch('/api/specialties/')
         .then(res => res.json())
         .then(data => {
             const select = document.getElementById('specialtySelect');
-            data.forEach(s => {
-                select.innerHTML += `<option value="${s.id}">${s.name}</option>`;
-            });
+            if(select) { // Проверка на случай, если элемента нет
+                data.forEach(s => {
+                    select.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+                });
+            }
         });
 
     function toggleFields() {
@@ -63,11 +66,38 @@
         document.getElementById('doctorFields').style.display = role === 'doctor' ? 'block' : 'none';
     }
 
+    // --- НОВАЯ ФУНКЦИЯ: Рекурсивный сбор сообщений об ошибках ---
+    function getErrorMessages(errors) {
+        let messages = [];
+        
+        for (const key in errors) {
+            const value = errors[key];
+            
+            if (Array.isArray(value)) {
+                // Если это массив строк (стандартная ошибка поля DRF)
+                value.forEach(msg => messages.push(msg));
+            } else if (typeof value === 'object' && value !== null) {
+                // Если это вложенный объект (например, "user": {...})
+                // Рекурсивно вызываем эту же функцию
+                messages = messages.concat(getErrorMessages(value));
+            } else {
+                // Если это просто строка
+                messages.push(String(value));
+            }
+        }
+        return messages;
+    }
+
     document.getElementById('regForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Скрываем старые ошибки перед новым запросом
+        const errorAlert = document.getElementById('errorAlert');
+        errorAlert.classList.add('d-none');
+        errorAlert.innerHTML = '';
+
         const role = document.getElementById('roleSelect').value;
         
-        // Собираем данные для UserSerializer (вложенный объект)
         const userData = {
             username: document.getElementById('username').value,
             password: document.getElementById('password').value,
@@ -96,21 +126,40 @@
             };
         }
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken
-            },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}' // Убедитесь, что токен передается корректно
+                },
+                body: JSON.stringify(payload)
+            });
 
-        if (response.ok) {
-            alert('Регистрация успешна! Теперь войдите.');
-            window.location.href = '/login/';
-        } else {
-            const err = await response.json();
-            alert('Ошибка: ' + JSON.stringify(err));
+            if (response.ok) {
+                alert('Регистрация успешна! Теперь войдите.');
+                window.location.href = '/login/';
+            } else {
+                // --- ОБРАБОТКА ОШИБОК ---
+                const errData = await response.json();
+                
+                // Превращаем JSON в плоский массив сообщений
+                const messages = getErrorMessages(errData);
+                
+                // Формируем HTML список
+                const htmlList = messages.map(msg => `<li>${msg}</li>`).join('');
+                
+                // Показываем блок с ошибками
+                errorAlert.innerHTML = `<ul>${htmlList}</ul>`;
+                errorAlert.classList.remove('d-none');
+                
+                // Скроллим вверх к ошибке
+                errorAlert.scrollIntoView({ behavior: 'smooth' });
+            }
+        } catch (error) {
+            console.error('Network error:', error);
+            errorAlert.innerText = 'Произошла ошибка сети. Попробуйте позже.';
+            errorAlert.classList.remove('d-none');
         }
     });
 </script>

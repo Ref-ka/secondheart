@@ -6,8 +6,6 @@ from .models import (
 from datetime import datetime, timedelta
 
 
-# --- Базовые сериализаторы ---
-
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -29,9 +27,6 @@ class WorkingHoursSerializer(serializers.ModelSerializer):
         read_only_fields = ['doctor']
 
     def validate(self, data):
-        """
-        Проверяем, что интервалы времени до и после обеда не пересекаются
-        """
         user = self.context['request'].user
         doctor = getattr(user, 'doctor_profile', None)
 
@@ -43,7 +38,6 @@ class WorkingHoursSerializer(serializers.ModelSerializer):
         if not all([doctor, day_of_week, before_lunch, start_time, end_time]):
             return data
 
-        # Проверяем базовую корректность времени
         if start_time >= end_time:
             raise serializers.ValidationError({
                 "error": "Время окончания должно быть позже времени начала"
@@ -54,7 +48,8 @@ class WorkingHoursSerializer(serializers.ModelSerializer):
         dt2 = datetime.combine(today, end_time)
 
         time_difference = dt2 - dt1
-        if (time_difference.seconds % 3600) // 60 < doctor.appointment_duration:
+
+        if time_difference.seconds // 60 < doctor.appointment_duration:
             raise serializers.ValidationError({
                 "error": "Разница между окончанием и началом промежутка приема должна быть не меньше, "
                          "чем длительность одного приема."
@@ -78,13 +73,11 @@ class WorkingHoursSerializer(serializers.ModelSerializer):
         return data
 
 
-# --- Врачи ---
-
 class DoctorSerializer(serializers.ModelSerializer):
     user = UserSerializer()
-    specialty_details = SpecialtySerializer(source='specialty', read_only=True)  # Для отображения
+    specialty_details = SpecialtySerializer(source='specialty', read_only=True)
     specialty = serializers.PrimaryKeyRelatedField(queryset=Specialty.objects.all(),
-                                                   write_only=True)  # Для записи по ID
+                                                   write_only=True)
 
     class Meta:
         model = Doctor
@@ -97,8 +90,23 @@ class DoctorSerializer(serializers.ModelSerializer):
         doctor = Doctor.objects.create(user=user, **validated_data)
         return doctor
 
+    def update(self, instance, validated_data):
+        # Обновляем данные пользователя
+        user_data = validated_data.pop('user', None)
+        if user_data:
+            user = instance.user
+            user.first_name = user_data.get('first_name', user.first_name)
+            user.last_name = user_data.get('last_name', user.last_name)
+            user.save()
 
-# --- Пациенты ---
+        # Обновляем данные доктора
+        instance.specialty = validated_data.get('specialty', instance.specialty)
+        instance.appointment_duration = validated_data.get('appointment_duration', instance.appointment_duration)
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save()
+
+        return instance
+
 
 class PatientSerializer(serializers.ModelSerializer):
     user = UserSerializer()
@@ -113,6 +121,21 @@ class PatientSerializer(serializers.ModelSerializer):
         patient = Patient.objects.create(user=user, **validated_data)
         return patient
 
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop('user', None)
+        if user_data:
+            user = instance.user
+            user.first_name = user_data.get('first_name', user.first_name)
+            user.last_name = user_data.get('last_name', user.last_name)
+            user.save()
+
+        instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+        instance.date_of_birth = validated_data.get('date_of_birth', instance.date_of_birth)
+        instance.emergency_contact = validated_data.get('emergency_contact', instance.emergency_contact)
+        instance.save()
+
+        return instance
+
 
 class PatientShortSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.get_full_name')
@@ -122,13 +145,11 @@ class PatientShortSerializer(serializers.ModelSerializer):
         fields = ['id', 'full_name', 'phone_number']
 
 
-# --- Слоты расписания ---
-
 class ScheduleSlotSerializer(serializers.ModelSerializer):
     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
     doctor_specialty = serializers.CharField(source='doctor.specialty.name', read_only=True)
     patient_info = serializers.SerializerMethodField()
-    appointment_id = serializers.SerializerMethodField() # <--- Добавляем это поле
+    appointment_id = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduleSlot
@@ -139,21 +160,15 @@ class ScheduleSlotSerializer(serializers.ModelSerializer):
             return PatientShortSerializer(obj.appointment.patient).data
         return None
 
-    # Добавляем метод для получения ID записи
     def get_appointment_id(self, obj):
         if hasattr(obj, 'appointment'):
             return obj.appointment.id
         return None
 
 
-# --- Запись на прием (Самое важное) ---
-
 class AppointmentSerializer(serializers.ModelSerializer):
-    # Эти поля только для чтения (чтобы красиво видеть ответ сервера)
     patient_details = PatientSerializer(source='patient', read_only=True)
     slot_details = ScheduleSlotSerializer(source='slot', read_only=True)
-
-    # Эти поля для записи (принимаем ID)
     patient = serializers.PrimaryKeyRelatedField(queryset=Patient.objects.all())
     slot = serializers.PrimaryKeyRelatedField(queryset=ScheduleSlot.objects.filter(status='free'))
 
@@ -162,7 +177,6 @@ class AppointmentSerializer(serializers.ModelSerializer):
         fields = ["id", "patient", "slot", "status", "patient_details", "slot_details", "created_at"]
 
     def create(self, validated_data):
-        # Логика: при создании записи, слот должен стать занятым
         slot = validated_data['slot']
         slot.status = 'booked'
         slot.save()
